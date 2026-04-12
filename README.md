@@ -3,7 +3,7 @@
 - Ali Andrea Mamani Molle - 558052
 - Guilherme Linard F.R Gozzi - 555768
 - Lucas Vasquez Silva - 555159
-- 
+
 # Smart Gym: Agachamento com Pose Tracking & RFID
 
 Este projeto integra **Visão Computacional** e **Sistemas Embarcados** para monitorar **agachamentos em tempo real**, identificando usuários via RFID e analisando a execução do exercício com base na biomecânica do movimento.
