@@ -49,7 +49,7 @@ pip install opencv-python mediapipe matplotlib pyserial numpy
 ```
 ## Configuração e Uso
 
-![Image](https://github.com/user-attachments/assets/dbaf90df-0881-4af8-bd13-ac1a0c31d7cd)
+![Image](https://github.com/user-attachments/assets/4e85af1b-eabf-44a0-83bd-48b3d038d8cf)
 
 **Pinos utilizados:**
 - SDA (SS) → Pino 10
