@@ -35,17 +35,43 @@ O sistema utiliza a webcam para rastrear o corpo do usuário e calcula o ângulo
   - Meta por usuário
   - Histórico de ângulos
 
----
-
-### 📋 Pré-requisitos e Montagem
-**1. Hardware
+## Pré-requisitos e Montagem
+**1. Hardware**
 * Webcam.
-* Arduino Uno/Nano conectado via USB. (Para o wokwi foi usado o ESP32 devido a falta)
+* Arduino Uno/Nano conectado via USB.
 * Leitor RFID MFRC522
 * Tags RFID
 * Jumpers
 
+### Instalação das Bibliotecas
+```bash
+pip install opencv-python mediapipe matplotlib pyserial numpy
+```
+## Configuração e Uso
 
+**Pinos utilizados:**
+- SDA (SS) → Pino 10
+- RST → Pino 9
+
+**Funcionamento:**
+- O Arduino lê a tag RFID
+- Envia o UID via Serial
+- O Python identifica o usuário automaticamente
+
+**Como Executar:**
+1. Conecte o Arduino na porta COM3
+2. Execute o código Python
+3. Na tela inicial:
+- Aproxime uma tag RFID OU
+- Pressione S para modo convidado
+4. Posicione-se na frente da câmera
+5. Realize o agachamento
+
+**Observações**
+O desempenho pode variar com:
+- Iluminação
+- Posição da câmera
+- Visibilidade do corpo
 
 
 
