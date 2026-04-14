@@ -3,47 +3,69 @@ import time
 import mediapipe as mp
 import numpy as np
 import serial
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+import os
+
+# --- 1. CONFIGURACOES INICIAIS ---
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 arduino_conectado = True
 try:
-    ser = serial.Serial('COM3', 115200, timeout=0.1)
-    print("Arduino ON - Sistema pronto!")
+    ser = serial.Serial('COM5', 9600, timeout=0.1)  # ALTERE A PORTA
+    print("Arduino ON - Sistema de Identificacao Pronto!")
 except:
-    print("Arduino OFF - modo convidado (tecla S)")
+    print("Arduino OFF - Apenas modo Convidado disponivel (Tecla 'S')")
     arduino_conectado = False
 
+# --- CORREÇÃO DO CAMINHO DO MODELO ---
+model_path = os.path.join(os.path.dirname(__file__), 'pose_landmarker_full.task')
 
-ALUNOS = {
-    "AB:12:CD:34": {"nome": "Aluno", "objetivo": 5}
+if not os.path.exists(model_path):
+    raise FileNotFoundError(f"Modelo nao encontrado em: {model_path}")
+
+# Setup MediaPipe
+base_options = python.BaseOptions(model_asset_path=model_path)
+options = vision.PoseLandmarkerOptions(
+    base_options=base_options,
+    running_mode=vision.RunningMode.VIDEO
+)
+detector = vision.PoseLandmarker.create_from_options(options)
+
+# --- 2. GRAFICO ---
+fig = plt.figure(figsize=(7, 2.5), dpi=100)
+ax = fig.add_subplot(111)
+ax.set_facecolor('black')
+fig.set_facecolor('black')
+canvas = FigureCanvas(fig)
+
+# --- 3. DATABASE ---
+ALUNOS_REGISTRADOS = {
+    "4A B9 3B 1B": {"nome": "Lucas", "exercicio": "Agachamento", "objetivo": 5},
+    "B3 22 A1 0C": {"nome": "Maria", "exercicio": "Agachamento", "objetivo": 8}
 }
 
-CONVIDADO = {"nome": "Convidado", "objetivo": 5}
+PERFIL_CONVIDADO = {"nome": "Convidado", "exercicio": "Agachamento", "objetivo": 3}
 
-estado_app = "AGUARDANDO"
-perfil = None
+estado_app = "AGUARDANDO_ID"
+perfil_ativo = None
+contador_reps = 0
+estagio_exercicio = ""
+historico_angulo = []
 
+# --- FUNCAO ANGULO ---
 def calcular_angulo(a, b, c):
     a, b, c = np.array(a), np.array(b), np.array(c)
+    radianos = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+    angulo = np.abs(radianos * 180.0 / np.pi)
+    if angulo > 180.0:
+        angulo = 360 - angulo
+    return angulo
 
-    rad = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    ang = np.abs(rad * 180.0 / np.pi)
-
-    if ang > 180:
-        ang = 360 - ang
-
-    return ang
-
-
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose()
+# --- 4. LOOP ---
 cap = cv2.VideoCapture(0)
-
-contador = 0
-estado_mov = None
-tempo_rep = time.time()
-historico = []
-
-print("Sistema iniciado...")
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -54,97 +76,108 @@ while cap.isOpened():
     h, w, _ = frame.shape
     tecla = cv2.waitKey(1) & 0xFF
 
-
-    if estado_app == "AGUARDANDO":
+    # --- TELA INICIAL ---
+    if estado_app == "AGUARDANDO_ID":
 
         if arduino_conectado and ser.in_waiting > 0:
-            linha = ser.readline().decode().strip()
-
-            if linha in ALUNOS:
-                perfil = ALUNOS[linha]
-                estado_app = "TREINO"
-                contador = 0
-                print(f"Bem-vindo {perfil['nome']}")
+            id_lido = ser.readline().decode('utf-8').strip()
+            if id_lido in ALUNOS_REGISTRADOS:
+                perfil_ativo = ALUNOS_REGISTRADOS[id_lido]
+                print(f"Aluno Identificado: {perfil_ativo['nome']}")
+                historico_angulo, contador_reps = [], 0
+                estado_app = "TREINO_EM_CURSO"
+            else:
+                print(f"ID {id_lido} nao cadastrado.")
 
         if tecla == ord('s'):
-            perfil = CONVIDADO
-            estado_app = "TREINO"
-            contador = 0
-            print("Modo convidado")
+            perfil_ativo = PERFIL_CONVIDADO
+            print("Iniciando como Convidado.")
+            historico_angulo, contador_reps = [], 0
+            estado_app = "TREINO_EM_CURSO"
 
-        cv2.putText(frame, "Aproxime o cartao ou pressione S",
-                    (50, h//2), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+        cv2.putText(frame, "APROXIME O CARTAO OU APERTE 'S'",
+                    (30, h // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7, (0, 255, 255), 2)
 
+    # --- TREINO ---
+    elif estado_app == "TREINO_EM_CURSO":
 
-    elif estado_app == "TREINO":
-
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        resultado = pose.process(rgb)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        resultado = detector.detect_for_video(mp_image, int(time.time() * 1000))
 
         if resultado.pose_landmarks:
-            lm = resultado.pose_landmarks.landmark
+            marcos = resultado.pose_landmarks[0]
 
-            quadril = [int(lm[mp_pose.PoseLandmark.LEFT_HIP].x * w),
-                       int(lm[mp_pose.PoseLandmark.LEFT_HIP].y * h)]
-
-            joelho = [int(lm[mp_pose.PoseLandmark.LEFT_KNEE].x * w),
-                      int(lm[mp_pose.PoseLandmark.LEFT_KNEE].y * h)]
-
-            tornozelo = [int(lm[mp_pose.PoseLandmark.LEFT_ANKLE].x * w),
-                         int(lm[mp_pose.PoseLandmark.LEFT_ANKLE].y * h)]
+            # PONTOS DO AGACHAMENTO
+            quadril = [int(marcos[23].x * w), int(marcos[23].y * h)]
+            joelho = [int(marcos[25].x * w), int(marcos[25].y * h)]
+            tornozelo = [int(marcos[27].x * w), int(marcos[27].y * h)]
 
             angulo = calcular_angulo(quadril, joelho, tornozelo)
-            historico.append(angulo)
-            if len(historico) > 20:
-                historico.pop(0)
 
+            # TEXTO ANGULO
+            cv2.putText(frame, f"{int(angulo)} graus",
+                        (joelho[0] + 30, joelho[1]),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6, (255, 255, 255), 2)
+
+            historico_angulo.append(angulo)
+            if len(historico_angulo) > 50:
+                historico_angulo.pop(0)
+
+            # DESENHO
+            cv2.line(frame, tuple(quadril), tuple(joelho), (255, 255, 255), 2)
+            cv2.line(frame, tuple(joelho), tuple(tornozelo), (255, 255, 255), 2)
+
+            for p in [quadril, joelho, tornozelo]:
+                cv2.circle(frame, tuple(p), 8, (0, 0, 255), -1)
+
+            # CONTAGEM AGACHAMENTO
             if angulo > 160:
-                estado_mov = "em_pe"
+                estagio_exercicio = "em_pe"
 
-            if angulo < 90 and estado_mov == "em_pe":
-                estado_mov = "agachado"
-                contador += 1
+            if angulo < 90 and estagio_exercicio == "em_pe":
+                estagio_exercicio = "agachado"
+                contador_reps += 1
 
-                tempo_atual = time.time()
-                duracao = tempo_atual - tempo_rep
-                tempo_rep = tempo_atual
+            # GRAFICO
+            ax.clear()
+            ax.plot(historico_angulo, color='#00FFFF', linewidth=2)
+            ax.set_ylim(0, 180)
+            ax.set_title("ANGULO EM TEMPO REAL", color='white')
+            canvas.draw()
 
-                print(f"Agachamento: {contador}")
+            grafico_img = cv2.cvtColor(np.asarray(canvas.buffer_rgba()), cv2.COLOR_RGBA2BGR)
+            grafico_img = cv2.resize(grafico_img, (w, 200))
+            frame = np.vstack((frame, grafico_img))
 
-                if duracao < 1:
-                    print("Muito rapido!")
+            # BARRA SUPERIOR
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (0, 0), (w, 50), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
 
-            if angulo > 160:
-                cv2.putText(frame, "Desca mais",
-                            (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
+            status = f"ALUNO: {perfil_ativo['nome']} | REPS: {contador_reps}/{perfil_ativo['objetivo']}"
+            cv2.putText(frame, status,
+                        (15, 35),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7, (0, 255, 0), 2)
 
-            if angulo < 70:
-                cv2.putText(frame, "Boa profundidade",
-                            (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            if contador_reps >= perfil_ativo['objetivo']:
+                estado_app = "TREINO_CONCLUIDO"
 
-            if len(historico) > 10 and max(historico) < 140:
-                cv2.putText(frame, "Fadiga detectada",
-                            (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
-
-            cv2.putText(frame, f"Angulo: {int(angulo)}",
-                        (50, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
-
-            cv2.putText(frame, f"Reps: {contador}/{perfil['objetivo']}",
-                        (50, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
-
-        if contador >= perfil["objetivo"]:
-            estado_app = "FINAL"
-
-
-    elif estado_app == "FINAL":
-        cv2.putText(frame, "TREINO FINALIZADO!",
-                    (100, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 3)
-
-        cv2.imshow("Smart Gym", frame)
+    # --- FINAL ---
+    elif estado_app == "TREINO_CONCLUIDO":
+        cv2.putText(frame, "TREINO CONCLUIDO!",
+                    (w // 2 - 150, h // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2, (0, 255, 0), 3)
+        cv2.imshow('Academia Inteligente', frame)
         cv2.waitKey(3000)
-        estado_app = "AGUARDANDO"
+        estado_app = "AGUARDANDO_ID"
 
-    cv2.imshow("Smart Gym", frame)
+    cv2.imshow('Academia Inteligente', frame)
 
     if tecla == ord('q'):
         break
