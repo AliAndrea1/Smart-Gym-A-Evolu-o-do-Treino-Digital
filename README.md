@@ -12,6 +12,10 @@ O sistema utiliza a webcam para rastrear o corpo do usuário e calcula o ângulo
 
 ---
 
+## Link do vídeo do Youtube
+
+[![Miniatura do vídeo](https://img.youtube.com/vi/oJDs7avXFdE/0.jpg)](https://youtu.be/oJDs7avXFdE)
+
 ## Funcionalidades
 **Identificação Inteligente**
   - Login via RFID (Arduino + MFRC522)
@@ -40,6 +44,10 @@ O sistema utiliza a webcam para rastrear o corpo do usuário e calcula o ângulo
   - Contador de repetições
   - Meta por usuário
   - Histórico de ângulos
+    
+**Arquivos de Modelo:**
+Você precisa baixar o modelo de pose do MediaPipe e colocá-lo na pasta raiz do projeto:
+`pose_landmarker_full.task`
 
 ## Pré-requisitos e Montagem
 **1. Hardware**
