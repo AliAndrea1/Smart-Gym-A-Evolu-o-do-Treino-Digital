@@ -7,7 +7,7 @@
 MFRC522 rfid(SS_PIN, RST_PIN);
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   SPI.begin();
   rfid.PCD_Init();
   
@@ -29,7 +29,6 @@ void loop() {
 
   strID.toUpperCase();
 
-  Serial.print("Tag detectada! UID: ");
   Serial.println(strID);
 
   rfid.PICC_HaltA();
