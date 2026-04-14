@@ -9,24 +9,21 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import os
 
-# --- 1. CONFIGURACOES INICIAIS ---
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 arduino_conectado = True
 try:
-    ser = serial.Serial('COM5', 9600, timeout=0.1)  # ALTERE A PORTA
+    ser = serial.Serial('COM5', 9600, timeout=0.1) 
     print("Arduino ON - Sistema de Identificacao Pronto!")
 except:
     print("Arduino OFF - Apenas modo Convidado disponivel (Tecla 'S')")
     arduino_conectado = False
 
-# --- CORREÇÃO DO CAMINHO DO MODELO ---
 model_path = os.path.join(os.path.dirname(__file__), 'pose_landmarker_full.task')
 
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"Modelo nao encontrado em: {model_path}")
 
-# Setup MediaPipe
 base_options = python.BaseOptions(model_asset_path=model_path)
 options = vision.PoseLandmarkerOptions(
     base_options=base_options,
@@ -34,16 +31,15 @@ options = vision.PoseLandmarkerOptions(
 )
 detector = vision.PoseLandmarker.create_from_options(options)
 
-# --- 2. GRAFICO ---
 fig = plt.figure(figsize=(7, 2.5), dpi=100)
 ax = fig.add_subplot(111)
 ax.set_facecolor('black')
 fig.set_facecolor('black')
 canvas = FigureCanvas(fig)
 
-# --- 3. DATABASE ---
+# --- Mudamos isso de acordo com o número do cartão no serial portal do arduino ---
 ALUNOS_REGISTRADOS = {
-    "4A B9 3B 1B": {"nome": "Lucas", "exercicio": "Agachamento", "objetivo": 5},
+    "4A B9 3B 1B": {"nome": "Lucas", "exercicio": "Agachamento", "objetivo": 5}, 
     "B3 22 A1 0C": {"nome": "Maria", "exercicio": "Agachamento", "objetivo": 8}
 }
 
@@ -55,7 +51,6 @@ contador_reps = 0
 estagio_exercicio = ""
 historico_angulo = []
 
-# --- FUNCAO ANGULO ---
 def calcular_angulo(a, b, c):
     a, b, c = np.array(a), np.array(b), np.array(c)
     radianos = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
@@ -64,7 +59,6 @@ def calcular_angulo(a, b, c):
         angulo = 360 - angulo
     return angulo
 
-# --- 4. LOOP ---
 cap = cv2.VideoCapture(0)
 
 while cap.isOpened():
@@ -76,7 +70,6 @@ while cap.isOpened():
     h, w, _ = frame.shape
     tecla = cv2.waitKey(1) & 0xFF
 
-    # --- TELA INICIAL ---
     if estado_app == "AGUARDANDO_ID":
 
         if arduino_conectado and ser.in_waiting > 0:
@@ -100,7 +93,6 @@ while cap.isOpened():
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7, (0, 255, 255), 2)
 
-    # --- TREINO ---
     elif estado_app == "TREINO_EM_CURSO":
 
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -110,14 +102,12 @@ while cap.isOpened():
         if resultado.pose_landmarks:
             marcos = resultado.pose_landmarks[0]
 
-            # PONTOS DO AGACHAMENTO
             quadril = [int(marcos[23].x * w), int(marcos[23].y * h)]
             joelho = [int(marcos[25].x * w), int(marcos[25].y * h)]
             tornozelo = [int(marcos[27].x * w), int(marcos[27].y * h)]
 
             angulo = calcular_angulo(quadril, joelho, tornozelo)
 
-            # TEXTO ANGULO
             cv2.putText(frame, f"{int(angulo)} graus",
                         (joelho[0] + 30, joelho[1]),
                         cv2.FONT_HERSHEY_SIMPLEX,
@@ -127,14 +117,12 @@ while cap.isOpened():
             if len(historico_angulo) > 50:
                 historico_angulo.pop(0)
 
-            # DESENHO
             cv2.line(frame, tuple(quadril), tuple(joelho), (255, 255, 255), 2)
             cv2.line(frame, tuple(joelho), tuple(tornozelo), (255, 255, 255), 2)
 
             for p in [quadril, joelho, tornozelo]:
                 cv2.circle(frame, tuple(p), 8, (0, 0, 255), -1)
 
-            # CONTAGEM AGACHAMENTO
             if angulo > 160:
                 estagio_exercicio = "em_pe"
 
@@ -142,7 +130,6 @@ while cap.isOpened():
                 estagio_exercicio = "agachado"
                 contador_reps += 1
 
-            # GRAFICO
             ax.clear()
             ax.plot(historico_angulo, color='#00FFFF', linewidth=2)
             ax.set_ylim(0, 180)
@@ -153,7 +140,6 @@ while cap.isOpened():
             grafico_img = cv2.resize(grafico_img, (w, 200))
             frame = np.vstack((frame, grafico_img))
 
-            # BARRA SUPERIOR
             overlay = frame.copy()
             cv2.rectangle(overlay, (0, 0), (w, 50), (0, 0, 0), -1)
             cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
@@ -167,7 +153,6 @@ while cap.isOpened():
             if contador_reps >= perfil_ativo['objetivo']:
                 estado_app = "TREINO_CONCLUIDO"
 
-    # --- FINAL ---
     elif estado_app == "TREINO_CONCLUIDO":
         cv2.putText(frame, "TREINO CONCLUIDO!",
                     (w // 2 - 150, h // 2),
